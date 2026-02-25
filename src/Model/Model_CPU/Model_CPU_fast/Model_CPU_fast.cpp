@@ -46,51 +46,161 @@ void Model_CPU_fast
 //     }
 
     
-
-        #pragma omp parallel for 
-            for (int i = 0; i < n_particles; i ++)
+/*
+    #pragma omp parallel for 
+        for (int i = 0; i < n_particles; i ++)
+        {
+            for (int j = 0; j < n_particles; j++)
             {
-                for (int j = 0; j < n_particles; j++)
+                if(i != j)
                 {
-                    if(i != j)
+                    // align vector ?
+                    const float diffx = particles.x[j] - particles.x[i];
+                    const float diffy = particles.y[j] - particles.y[i];
+                    const float diffz = particles.z[j] - particles.z[i];
+
+                    float dij = diffx * diffx + diffy * diffy + diffz * diffz;
+
+                    // remove the if case if possible
+                    if (dij < 1.0)
                     {
-                        const float diffx = particles.x[j] - particles.x[i];
-                        const float diffy = particles.y[j] - particles.y[i];
-                        const float diffz = particles.z[j] - particles.z[i];
-
-                        float dij = diffx * diffx + diffy * diffy + diffz * diffz;
-
-                        if (dij < 1.0)
-                        {
-                            dij = 10.0;
-                        }
-                        else
-                        {
-                            dij = std::sqrt(dij);
-                            dij = 10.0 / (dij * dij * dij);
-                        }
-
-                        accelerationsx[i] += diffx * dij * initstate.masses[j];
-                        accelerationsy[i] += diffy * dij * initstate.masses[j];
-                        accelerationsz[i] += diffz * dij * initstate.masses[j];
+                        dij = 10.0;
                     }
+                    else
+                    {
+                        dij = std::sqrt(dij); // Fast sqrt algo ?
+
+                        dij = 10.0 / (dij * dij * dij);
+                    }
+
+                    accelerationsx[i] += diffx * dij * initstate.masses[j];
+                    accelerationsy[i] += diffy * dij * initstate.masses[j];
+                    accelerationsz[i] += diffz * dij * initstate.masses[j];
                 }
-            
             }
         
-        
-        #pragma omp parallel for 
-        for (int i = 0; i < n_particles; i++)
-        {
-            velocitiesx[i] += accelerationsx[i] * 2.0f;
-            velocitiesy[i] += accelerationsy[i] * 2.0f;
-            velocitiesz[i] += accelerationsz[i] * 2.0f;
-            particles.x[i] += velocitiesx   [i] * 0.1f;
-            particles.y[i] += velocitiesy   [i] * 0.1f;
-            particles.z[i] += velocitiesz   [i] * 0.1f;
         }
-        
     
+    
+    #pragma omp parallel for 
+    for (int i = 0; i < n_particles; i++)
+    {            
+        velocitiesx[i] += accelerationsx[i] * 2.0f;
+        velocitiesy[i] += accelerationsy[i] * 2.0f;
+        velocitiesz[i] += accelerationsz[i] * 2.0f;
+        
+        particles.x[i] += velocitiesx[i] * 0.1f;
+        particles.y[i] += velocitiesy[i] * 0.1f;
+        particles.z[i] += velocitiesz[i] * 0.1f;
+
+    }
+*/    
+    
+    #pragma omp parallel for
+        for (int i = 0; i < n_particles; i += b_type::size)
+        {
+            // load registers body i
+            const b_type rposx_i = b_type::load_unaligned(&particles.x[i]);
+            const b_type rposy_i = b_type::load_unaligned(&particles.y[i]);
+            const b_type rposz_i = b_type::load_unaligned(&particles.z[i]);
+                b_type raccx_i = b_type::load_unaligned(&accelerationsx[i]);
+                b_type raccy_i = b_type::load_unaligned(&accelerationsy[i]);
+                b_type raccz_i = b_type::load_unaligned(&accelerationsz[i]);
+
+            for (int j = 0; j < n_particles; j++)
+            {
+                if(i == j)
+                {
+                    continue;
+                }
+
+                const b_type rposx_i = b_type::load_unaligned(&particles.x[j]);
+                const b_type rposy_i = b_type::load_unaligned(&particles.y[j]);
+                const b_type rposz_i = b_type::load_unaligned(&particles.z[j]);
+                    b_type raccx_i = b_type::load_unaligned(&accelerationsx[j]);
+                    b_type raccy_i = b_type::load_unaligned(&accelerationsy[j]);
+                    b_type raccz_i = b_type::load_unaligned(&accelerationsz[j]);
+
+                b_type diffx = 
+
+                // align vector ?
+                const float diffx = particles.x[j] - particles.x[i];
+                const float diffy = particles.y[j] - particles.y[i];
+                const float diffz = particles.z[j] - particles.z[i];
+
+                float dij = diffx * diffx + diffy * diffy + diffz * diffz;
+
+                // remove the if case if possible
+                // Purpose of this branch : Prob a max on dij : must be at most 10 ?
+                if (dij < 1.0)
+                {
+                    dij = 10.0;
+                }
+                else
+                {
+                    dij = std::sqrt(dij); // Fast sqrt algo ?
+
+                    dij = 10.0 / (dij * dij * dij);
+                }
+
+                accelerationsx[i] += diffx * dij * initstate.masses[j];
+                accelerationsy[i] += diffy * dij * initstate.masses[j];
+                accelerationsz[i] += diffz * dij * initstate.masses[j];
+
+
+
+            }
+            
+        }
+
+    #pragma omp parallel for 
+        for (int i = 0; i < n_particles; i ++)
+        {
+            for (int j = 0; j < n_particles; j++)
+            {
+                if(i != j)
+                {
+                    // align vector ?
+                    const float diffx = particles.x[j] - particles.x[i];
+                    const float diffy = particles.y[j] - particles.y[i];
+                    const float diffz = particles.z[j] - particles.z[i];
+
+                    float dij = diffx * diffx + diffy * diffy + diffz * diffz;
+
+                    // remove the if case if possible
+                    if (dij < 1.0)
+                    {
+                        dij = 10.0;
+                    }
+                    else
+                    {
+                        dij = std::sqrt(dij); // Fast sqrt algo ?
+
+                        dij = 10.0 / (dij * dij * dij);
+                    }
+
+                    accelerationsx[i] += diffx * dij * initstate.masses[j];
+                    accelerationsy[i] += diffy * dij * initstate.masses[j];
+                    accelerationsz[i] += diffz * dij * initstate.masses[j];
+                }
+            }
+        
+        }
+    
+    
+    #pragma omp parallel for 
+    for (int i = 0; i < n_particles; i++)
+    {            
+        velocitiesx[i] += accelerationsx[i] * 2.0f;
+        velocitiesy[i] += accelerationsy[i] * 2.0f;
+        velocitiesz[i] += accelerationsz[i] * 2.0f;
+        
+        particles.x[i] += velocitiesx[i] * 0.1f;
+        particles.y[i] += velocitiesy[i] * 0.1f;
+        particles.z[i] += velocitiesz[i] * 0.1f;
+
+    }
+
 }
 
 #endif // GALAX_MODEL_CPU_FAST
