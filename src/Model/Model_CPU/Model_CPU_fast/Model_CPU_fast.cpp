@@ -39,7 +39,7 @@
             b_type raccz_i = MAGIC_ZERO;
 
 
-            for (int j = i + 1; j < n_particles; j++)
+            for (int j = 0; j < n_particles; j++)
             {                
                 const b_type rposx_j = b_type(particles.x[j]);
                 const b_type rposy_j = b_type(particles.y[j]);
