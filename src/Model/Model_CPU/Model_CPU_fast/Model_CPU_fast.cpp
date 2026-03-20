@@ -65,7 +65,7 @@ void Model_CPU_fast
                 
                 dij = xsimd::rsqrt(dij);
                 dij = MAGIC_TEN * dij * dij * dij;
-                dij = xsimd::select(if_greater_than_1, dij, MAGIC_ONE) * rmass_j;
+                dij = xsimd::select(if_greater_than_1, dij, MAGIC_TEN) * rmass_j;
 
                 raccx_i = xsimd::fma(diffx, dij, raccx_i);
                 raccy_i = xsimd::fma(diffy, dij, raccy_i);
