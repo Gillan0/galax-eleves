@@ -40,55 +40,78 @@ void update_position_gpu(float3* positionsGPU, float3* velocitiesGPU, float3* ac
 		std::cout << "error: unable to synchronize threads" << std::endl;
 }
 
-
-Model_GPU
-::Model_GPU(const Initstate& initstate, Particles& particles)
+Model_GPU::Model_GPU(const Initstate& initstate, Particles& particles)
 : Model(initstate, particles),
-  positionsf3    (n_particles),
-  velocitiesf3   (n_particles),
+  positionsf3(n_particles),
+  velocitiesf3(n_particles),
   accelerationsf3(n_particles)
 {
-	// init cuda
-	cudaError_t cudaStatus;
+    cudaSetDevice(0);
 
-	cudaStatus = cudaSetDevice(0);
-	if (cudaStatus != cudaSuccess)
-		std::cout << "error: unable to setup cuda device" << std::endl;
+    for (int i = 0; i < n_particles; i++)
+    {
+        positionsf3[i].x     = initstate.positionsx[i];
+        positionsf3[i].y     = initstate.positionsy[i];
+        positionsf3[i].z     = initstate.positionsz[i];
 
-	for (int i = 0; i < n_particles; i++)
-	{
-		positionsf3[i].x     = initstate.positionsx [i];
-		positionsf3[i].y     = initstate.positionsy [i];
-		positionsf3[i].z     = initstate.positionsz [i];
-		velocitiesf3[i].x    = initstate.velocitiesx[i];
-		velocitiesf3[i].y    = initstate.velocitiesy[i];
-		velocitiesf3[i].z    = initstate.velocitiesz[i];
-		accelerationsf3[i].x = 0;
-		accelerationsf3[i].y = 0;
-		accelerationsf3[i].z = 0;
-	}
+        velocitiesf3[i].x    = initstate.velocitiesx[i];
+        velocitiesf3[i].y    = initstate.velocitiesy[i];
+        velocitiesf3[i].z    = initstate.velocitiesz[i];
 
-	cuda_malloc((void**)&positionsGPU,     n_particles * sizeof(float3));
+        accelerationsf3[i].x = 0;
+        accelerationsf3[i].y = 0;
+        accelerationsf3[i].z = 0;
+    }
 
-	cuda_memcpy(positionsGPU,  positionsf3.data()     , n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+    cudaMalloc(&positionsGPU,     n_particles * sizeof(float3));
+    cudaMalloc(&velocitiesGPU,    n_particles * sizeof(float3));
+    cudaMalloc(&accelerationsGPU, n_particles * sizeof(float3));
+    cudaMalloc(&massesGPU,        n_particles * sizeof(float));
+
+    cudaMemcpy(positionsGPU, positionsf3.data(),
+               n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+
+    cudaMemcpy(velocitiesGPU, velocitiesf3.data(),
+               n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+
+    cudaMemcpy(accelerationsGPU, accelerationsf3.data(),
+               n_particles * sizeof(float3), cudaMemcpyHostToDevice);
+
+    cudaMemcpy(massesGPU, initstate.masses.data(),
+               n_particles * sizeof(float), cudaMemcpyHostToDevice);
 }
 
 Model_GPU
 ::~Model_GPU()
 {
 	cudaFree((void**)&positionsGPU);
+    cudaFree((void**)&velocitiesGPU);
+    cudaFree((void**)&accelerationsGPU);
+    cudaFree((void**)&massesGPU);
 }
 
 void Model_GPU
 ::step()
 {
-	cuda_memcpy(positionsf3.data(), positionsGPU, n_particles * sizeof(float3), cudaMemcpyDeviceToHost);
-	for (int i = 0; i < n_particles; i++)
-	{
-		particles.x[i] = positionsf3[i].x;
-		particles.y[i] = positionsf3[i].y;
-		particles.z[i] = positionsf3[i].z;
-	}
+	cudaMemset(accelerationsGPU, 0, n_particles * sizeof(float3));
+
+    update_position_gpu(positionsGPU,
+                        velocitiesGPU,
+                        accelerationsGPU,
+                        massesGPU,
+                        n_particles);
+
+    cudaMemcpy(positionsf3.data(),
+               positionsGPU,
+               n_particles * sizeof(float3),
+               cudaMemcpyDeviceToHost);
+
+    for (int i = 0; i < n_particles; i++)
+    {
+        particles.x[i] = positionsf3[i].x;
+        particles.y[i] = positionsf3[i].y;
+        particles.z[i] = positionsf3[i].z;
+    }
 }
 
 #endif // GALAX_MODEL_GPU
