@@ -42,41 +42,32 @@ void Model_CPU_fast
         b_type raccz_i = MAGIC_ZERO;
 
 
-        for (int j = 0; j < n_particles; j+= b_type::size)
+        for (int j = 0; j < n_particles; j++)
         {                
-            b_type rposx_j = b_type::load_unaligned(&particles.x[j]);
-            b_type rposy_j = b_type::load_unaligned(&particles.y[j]);
-            b_type rposz_j = b_type::load_unaligned(&particles.z[j]);
-            b_type rmass_j = b_type::load_unaligned(&initstate.masses[j]);
+
+            b_type rposx_j = b_type(particles.x[j]);
+            b_type rposy_j = b_type(particles.y[j]);
+            b_type rposz_j = b_type(particles.z[j]);
+            b_type rmass_j = b_type(initstate.masses[j]);
+
+            const b_type diffx = xsimd::sub(rposx_j, rposx_i);
+            const b_type diffy = xsimd::sub(rposy_j, rposy_i);
+            const b_type diffz = xsimd::sub(rposz_j, rposz_i);
+
+            b_type dij = xsimd::fma(diffx, diffx, MAGIC_ZERO);
+            dij = xsimd::fma(diffy, diffy, dij);
+            dij = xsimd::fma(diffz, diffz, dij);
             
-            for (int k = 0; k < b_type::size; k++) 
-            {
+            /* Calcul des distances */
+            dij = xsimd::max(dij, MAGIC_ONE);             
+            dij = xsimd::rsqrt(dij);
+            dij = MAGIC_TEN * dij * dij * dij * rmass_j;
 
-                const b_type diffx = xsimd::sub(rposx_j, rposx_i);
-                const b_type diffy = xsimd::sub(rposy_j, rposy_i);
-                const b_type diffz = xsimd::sub(rposz_j, rposz_i);
+            raccx_i = xsimd::fma(diffx, dij, raccx_i);
+            raccy_i = xsimd::fma(diffy, dij, raccy_i);
+            raccz_i = xsimd::fma(diffz, dij, raccz_i);
 
-                b_type dij = xsimd::fma(diffx, diffx, MAGIC_ZERO);
-                dij = xsimd::fma(diffy, diffy, dij);
-                dij = xsimd::fma(diffz, diffz, dij);
-                
-                /* Calcul des distances */
-                const auto if_greater_than_1 = xsimd::gt(dij, MAGIC_ONE);
-                
-                dij = xsimd::rsqrt(dij);
-                dij = MAGIC_TEN * dij * dij * dij;
-                dij = xsimd::select(if_greater_than_1, dij, MAGIC_TEN) * rmass_j;
-
-                raccx_i = xsimd::fma(diffx, dij, raccx_i);
-                raccy_i = xsimd::fma(diffy, dij, raccy_i);
-                raccz_i = xsimd::fma(diffz, dij, raccz_i);
-
-                rposx_j = xs::rotate_right<1>(rposx_j);
-                rposy_j = xs::rotate_right<1>(rposy_j);
-                rposz_j = xs::rotate_right<1>(rposz_j);
-                rmass_j = xs::rotate_right<1>(rmass_j);
-
-            }
+               
         }
 
         raccx_i.store_unaligned(&accelerationsx[i]);

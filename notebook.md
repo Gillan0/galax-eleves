@@ -48,4 +48,9 @@ Or 1000 FPS -> 500 FPS
 
 Float4 : No increase
 
-Tile and thread blocks : 1600 FPS - 800 FPS
+Tile and thread blocks : 1600 FPS - 850 FPS
+
+CPU : 
+Using other batch loading makes it slower (prob. cause of more memory access + rotate operations on batches)
+
+Replacing mask with a max yiels better results -> 200 FPS - 67 FPS 
